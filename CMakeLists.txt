@@ -248,10 +248,8 @@ rocm_install(
 rocm_package_add_dependencies(
   DEPENDS
     hsa-rocr
-    "hip-runtime-amd >= 6.2.2"
-    "rocm-dev >= 6.2.2"
-    "openmpi >= 5.0.6"
-    "ucx >= 1.17.0"
+    hip-runtime-amd
+    rocm-dev
 )
 
 rocm_create_package(

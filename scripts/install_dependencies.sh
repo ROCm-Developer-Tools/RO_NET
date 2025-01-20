@@ -34,6 +34,7 @@ cd ucx
                             --without-go               \
                             --without-java             \
                             --without-cuda             \
+                            --without-verbs            \
                             --without-knem
 make -j
 make install
