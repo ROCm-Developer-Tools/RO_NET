@@ -252,6 +252,11 @@ rocm_package_add_dependencies(
     rocm-dev
 )
 
+rocm_export_targets(
+  TARGETS roc::rocshmem
+  NAMESPACE roc::
+)
+
 rocm_create_package(
   NAME "rocSHMEM"
   DESCRIPTION "ROCm OpenSHMEM (rocSHMEM)"
