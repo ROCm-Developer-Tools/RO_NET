@@ -233,7 +233,7 @@ __device__ void IPCContext::putmem_signal(void *dest, const void *source, size_t
     amo_set<uint64_t>(static_cast<void*>(sig_addr), signal, pe);
     break;
   case ROCSHMEM_SIGNAL_ADD:
-    amo_add<uint64_t>(static_cast<void*>(dest), signal, pe);
+    amo_add<uint64_t>(static_cast<void*>(sig_addr), signal, pe);
     break;
   default:
     DPRINTF("[%s] Invalid sig_op value (%d)\n", __func__, sig_op);
@@ -253,7 +253,7 @@ __device__ void IPCContext::putmem_signal_wg(void *dest, const void *source, siz
       amo_set<uint64_t>(static_cast<void*>(sig_addr), signal, pe);
       break;
     case ROCSHMEM_SIGNAL_ADD:
-      amo_add<uint64_t>(static_cast<void*>(dest), signal, pe);
+      amo_add<uint64_t>(static_cast<void*>(sig_addr), signal, pe);
       break;
     default:
       DPRINTF("[%s] Invalid sig_op value (%d)\n", __func__, sig_op);
@@ -274,7 +274,7 @@ __device__ void IPCContext::putmem_signal_wave(void *dest, const void *source, s
       amo_set<uint64_t>(static_cast<void*>(sig_addr), signal, pe);
       break;
     case ROCSHMEM_SIGNAL_ADD:
-      amo_add<uint64_t>(static_cast<void*>(dest), signal, pe);
+      amo_add<uint64_t>(static_cast<void*>(sig_addr), signal, pe);
       break;
     default:
       DPRINTF("[%s] Invalid sig_op value (%d)\n", __func__, sig_op);
@@ -298,7 +298,7 @@ __device__ void IPCContext::putmem_signal_nbi_wg(void *dest, const void *source,
 __device__ void IPCContext::putmem_signal_nbi_wave(void *dest, const void *source, size_t nelems,
                                                    uint64_t *sig_addr, uint64_t signal, int sig_op,
                                                    int pe) {
-    putmem_signal_wave(dest, source, nelems, sig_addr, signal, sig_op, pe);
+  putmem_signal_wave(dest, source, nelems, sig_addr, signal, sig_op, pe);
 }
 
 __device__ uint64_t IPCContext::signal_fetch(const uint64_t *sig_addr) {
