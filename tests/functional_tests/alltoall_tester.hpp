@@ -34,9 +34,7 @@
 template <typename T1>
 class AlltoallTester : public Tester {
  public:
-  explicit AlltoallTester(
-      TesterArguments args, std::function<void(T1 &, T1 &, T1)> f1,
-      std::function<std::pair<bool, std::string>(const T1 &, T1)> f2);
+  explicit AlltoallTester(TesterArguments args);
   virtual ~AlltoallTester();
 
  protected:
@@ -51,12 +49,12 @@ class AlltoallTester : public Tester {
 
   virtual void verifyResults(uint64_t size) override;
 
-  T1 *source_buf;
-  T1 *dest_buf;
+  T1 *source_buf = nullptr;
+  T1 *dest_buf = nullptr;
 
  private:
-  std::function<void(T1 &, T1 &, T1)> init_buf;
-  std::function<std::pair<bool, std::string>(const T1 &, T1)> verify_buf;
+  int my_pe = 0;
+  int n_pes = 0;
 };
 
 #include "alltoall_tester.cpp"

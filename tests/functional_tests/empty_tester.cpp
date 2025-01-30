@@ -29,8 +29,9 @@ using namespace rocshmem;
 /******************************************************************************
  * DEVICE TEST KERNEL
  *****************************************************************************/
-__global__ void EmptyTest(int loop, int skip, uint64_t *timer, int size,
-                          TestType type, ShmemContextType ctx_type) {
+__global__ void EmptyTest(int loop, int skip, uint64_t *start_time,
+                          uint64_t *end_time, int size, TestType type,
+                          ShmemContextType ctx_type) {
   __shared__ rocshmem_ctx_t ctx;
   rocshmem_wg_init();
   rocshmem_wg_ctx_create(ctx_type, &ctx);
@@ -52,8 +53,9 @@ void EmptyTester::launchKernel(dim3 gridSize, dim3 blockSize, int loop,
                                uint64_t size) {
   size_t shared_bytes = 0;
 
-  hipLaunchKernelGGL(EmptyTest, gridSize, blockSize, shared_bytes, stream, loop,
-                     args.skip, timer, size, _type, _shmem_context);
+  hipLaunchKernelGGL(EmptyTest, gridSize, blockSize, shared_bytes, stream,
+                     loop, args.skip, start_time, end_time, size, _type,
+                     _shmem_context);
 }
 
 void EmptyTester::verifyResults(uint64_t size) {}
