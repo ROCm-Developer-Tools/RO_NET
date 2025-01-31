@@ -22,6 +22,11 @@
 
 using namespace rocshmem;
 
+/* this constant should equal ROCSHMEM_MAX_NUM_TEAMS-1 */
+#define NUM_TEAMS 39
+
+rocshmem_team_t team_reduce_world_dup[NUM_TEAMS];
+
 /* Declare the template with a generic implementation */
 template <typename T, ROCSHMEM_OP Op>
 __device__ int wg_team_reduce(rocshmem_ctx_t ctx, rocshmem_team_t, T *dest,
@@ -67,38 +72,37 @@ TEAM_FLOAT_REDUCTION_DEF_GEN(double, double)
 // so disable it for now.
 // FLOAT_REDUCTION_DEF_GEN(long double, longdouble)
 
-rocshmem_team_t team_reduce_world_dup;
-
 /******************************************************************************
  * DEVICE TEST KERNEL
  *****************************************************************************/
 template <typename T1, ROCSHMEM_OP T2>
-__global__ void TeamReductionTest(int loop, int skip, uint64_t *timer,
-                                  T1 *s_buf, T1 *r_buf, int size, TestType type,
+__global__ void TeamReductionTest(int loop, int skip, uint64_t *start_time,
+                                  uint64_t *end_time, T1 *s_buf, T1 *r_buf,
+                                  int size, TestType type,
                                   ShmemContextType ctx_type,
-                                  rocshmem_team_t team) {
+                                  rocshmem_team_t *teams) {
   __shared__ rocshmem_ctx_t ctx;
+  int wg_id = get_flat_grid_id();
 
   rocshmem_wg_init();
-  rocshmem_wg_ctx_create(ctx_type, &ctx);
+  rocshmem_wg_team_create_ctx(teams[wg_id], ctx_type, &ctx);
 
   int n_pes = rocshmem_ctx_n_pes(ctx);
 
   __syncthreads();
 
-  uint64_t start;
   for (int i = 0; i < loop + skip; i++) {
     if (i == skip && hipThreadIdx_x == 0) {
-      start = rocshmem_timer();
+      start_time[wg_id] = wall_clock64();
     }
-    wg_team_reduce<T1, T2>(ctx, team, r_buf, s_buf, size);
+    wg_team_reduce<T1, T2>(ctx, teams[wg_id], r_buf, s_buf, size);
     rocshmem_ctx_wg_barrier_all(ctx);
   }
 
   __syncthreads();
 
   if (hipThreadIdx_x == 0) {
-    timer[hipBlockIdx_x] = rocshmem_timer() - start;
+    end_time[wg_id] = wall_clock64();
   }
 
   rocshmem_wg_ctx_destroy(&ctx);
@@ -127,9 +131,15 @@ template <typename T1, ROCSHMEM_OP T2>
 void TeamReductionTester<T1, T2>::preLaunchKernel() {
   int n_pes = rocshmem_team_n_pes(ROCSHMEM_TEAM_WORLD);
 
-  team_reduce_world_dup = ROCSHMEM_TEAM_INVALID;
-  rocshmem_team_split_strided(ROCSHMEM_TEAM_WORLD, 0, 1, n_pes, nullptr, 0,
-                               &team_reduce_world_dup);
+  for (int team_i = 0; team_i < NUM_TEAMS; team_i++) {
+    team_reduce_world_dup[team_i] = ROCSHMEM_TEAM_INVALID;
+    rocshmem_team_split_strided(ROCSHMEM_TEAM_WORLD, 0, 1, n_pes, nullptr, 0,
+                                 &team_reduce_world_dup[team_i]);
+    if (team_reduce_world_dup[team_i] == ROCSHMEM_TEAM_INVALID) {
+      printf("Team %d is invalid!\n", team_i);
+      abort();
+    }
+  }
 }
 
 template <typename T1, ROCSHMEM_OP T2>
@@ -137,18 +147,28 @@ void TeamReductionTester<T1, T2>::launchKernel(dim3 gridSize, dim3 blockSize,
                                                int loop, uint64_t size) {
   size_t shared_bytes = 0;
 
-  hipLaunchKernelGGL(HIP_KERNEL_NAME(TeamReductionTest<T1, T2>), gridSize,
-                     blockSize, shared_bytes, stream, loop, args.skip, timer,
-                     s_buf, r_buf, size, _type, _shmem_context,
-                     team_reduce_world_dup);
+  /* Copy array of teams to device */
+  rocshmem_team_t *teams_on_device;
+  CHECK_HIP(hipMalloc(&teams_on_device, sizeof(rocshmem_team_t) * NUM_TEAMS));
+  CHECK_HIP(hipMemcpy(teams_on_device, team_reduce_world_dup,
+            sizeof(rocshmem_team_t) * NUM_TEAMS, hipMemcpyHostToDevice));
 
-  num_msgs = loop + args.skip;
-  num_timed_msgs = loop;
+  hipLaunchKernelGGL(HIP_KERNEL_NAME(TeamReductionTest<T1, T2>), gridSize,
+                     blockSize, shared_bytes, stream, loop, args.skip,
+                     start_time, end_time, s_buf, r_buf, size, _type,
+                     _shmem_context, teams_on_device);
+
+  num_msgs = (loop + args.skip) * gridSize.x;
+  num_timed_msgs = loop * gridSize.x;
+
+  CHECK_HIP(hipFree(teams_on_device));
 }
 
 template <typename T1, ROCSHMEM_OP T2>
 void TeamReductionTester<T1, T2>::postLaunchKernel() {
-  rocshmem_team_destroy(team_reduce_world_dup);
+  for (int team_i = 0; team_i < NUM_TEAMS; team_i++) {
+    rocshmem_team_destroy(team_reduce_world_dup[team_i]);
+  }
 }
 
 template <typename T1, ROCSHMEM_OP T2>

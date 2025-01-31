@@ -34,9 +34,7 @@
 template <typename T1>
 class TeamBroadcastTester : public Tester {
  public:
-  explicit TeamBroadcastTester(
-      TesterArguments args, std::function<void(T1 &, T1 &)> f1,
-      std::function<std::pair<bool, std::string>(const T1 &)> f2);
+  explicit TeamBroadcastTester(TesterArguments args);
   virtual ~TeamBroadcastTester();
 
  protected:
@@ -53,10 +51,6 @@ class TeamBroadcastTester : public Tester {
 
   T1 *source_buf;
   T1 *dest_buf;
-
- private:
-  std::function<void(T1 &, T1 &)> init_buf;
-  std::function<std::pair<bool, std::string>(const T1 &)> verify_buf;
 };
 
 #include "team_broadcast_tester.cpp"

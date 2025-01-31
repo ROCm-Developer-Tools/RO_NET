@@ -25,6 +25,8 @@
 
 #include <functional>
 #include <utility>
+#include <type_traits>
+#include <iostream>
 
 #include "tester.hpp"
 
@@ -34,9 +36,7 @@
 template <typename T1>
 class FcollectTester : public Tester {
  public:
-  explicit FcollectTester(
-      TesterArguments args, std::function<void(T1 &, T1 &)> f1,
-      std::function<std::pair<bool, std::string>(const T1 &, T1)> f2);
+  explicit FcollectTester(TesterArguments args);
   virtual ~FcollectTester();
 
  protected:
@@ -54,9 +54,6 @@ class FcollectTester : public Tester {
   T1 *source_buf;
   T1 *dest_buf;
 
- private:
-  std::function<void(T1 &, T1 &)> init_buf;
-  std::function<std::pair<bool, std::string>(const T1 &, T1)> verify_buf;
 };
 
 #include "fcollect_tester.cpp"

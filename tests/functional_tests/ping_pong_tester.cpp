@@ -29,21 +29,22 @@ using namespace rocshmem;
 /******************************************************************************
  * DEVICE TEST KERNEL
  *****************************************************************************/
-__global__ void PingPongTest(int loop, int skip, uint64_t *timer, int *r_buf,
+__global__ void PingPongTest(int loop, int skip, uint64_t *start_time,
+                             uint64_t *end_time, int *r_buf,
                              ShmemContextType ctx_type) {
   __shared__ rocshmem_ctx_t ctx;
 
   rocshmem_wg_init();
   rocshmem_wg_ctx_create(ctx_type, &ctx);
+  int wg_id = get_flat_grid_id();
 
   int pe = rocshmem_ctx_my_pe(ctx);
 
   if (hipThreadIdx_x == 0) {
-    uint64_t start;
 
     for (int i = 0; i < loop + skip; i++) {
       if (i == skip) {
-        start = rocshmem_timer();
+        start_time[wg_id] = wall_clock64();
       }
 
       if (pe == 0) {
@@ -56,7 +57,7 @@ __global__ void PingPongTest(int loop, int skip, uint64_t *timer, int *r_buf,
         rocshmem_ctx_int_p(ctx, &r_buf[hipBlockIdx_x], i + 1, 0);
       }
     }
-    timer[hipBlockIdx_x] = rocshmem_timer() - start;
+    end_time[wg_id] = wall_clock64();
   }
   rocshmem_wg_ctx_destroy(&ctx);
   rocshmem_wg_finalize();
@@ -80,7 +81,8 @@ void PingPongTester::launchKernel(dim3 gridSize, dim3 blockSize, int loop,
   size_t shared_bytes = 0;
 
   hipLaunchKernelGGL(PingPongTest, gridSize, blockSize, shared_bytes, stream,
-                     loop, args.skip, timer, r_buf, _shmem_context);
+                     loop, args.skip, start_time, end_time, r_buf,
+                     _shmem_context);
 
   num_msgs = (loop + args.skip) * gridSize.x;
   num_timed_msgs = loop;

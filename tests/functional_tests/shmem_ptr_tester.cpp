@@ -76,11 +76,13 @@ void ShmemPtrTester::verifyResults(uint64_t size) {
   if (args.myid == 0) {
     if (*_available == 0) {
       fprintf(stderr, "SHMEM_PTR NOT AVAILBLE \n");
+      exit(-1);
     }
   } else {
     if (r_buf[4] != '1') {
       fprintf(stderr, "Data validation error \n");
       fprintf(stderr, "Got %c, Expected %c\n", r_buf[4], '1');
+      exit(-1);
     }
   }
 }

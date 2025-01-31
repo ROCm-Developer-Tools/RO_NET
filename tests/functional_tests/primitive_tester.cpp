@@ -29,19 +29,26 @@ using namespace rocshmem;
 /******************************************************************************
  * DEVICE TEST KERNEL
  *****************************************************************************/
-__global__ void PrimitiveTest(int loop, int skip, uint64_t *timer, char *s_buf,
-                              char *r_buf, int size, TestType type,
+__global__ void PrimitiveTest(int loop, int skip, uint64_t *start_time,
+                              uint64_t *end_time, char *s_buf, char *r_buf,
+                              int size, TestType type,
                               ShmemContextType ctx_type) {
   __shared__ rocshmem_ctx_t ctx;
   rocshmem_wg_init();
   rocshmem_wg_ctx_create(ctx_type, &ctx);
+  int wg_id = get_flat_grid_id();
 
-  uint64_t start;
+  /**
+   * Calculate start index for each thread within the grid
+   */
+  uint64_t idx = size * get_flat_id();
+  s_buf += idx;
+  r_buf += idx;
 
   for (int i = 0; i < loop + skip; i++) {
     if (i == skip) {
         __syncthreads();
-        start = rocshmem_timer();
+        start_time[wg_id] = wall_clock64();
     }
 
     switch (type) {
@@ -79,7 +86,7 @@ __global__ void PrimitiveTest(int loop, int skip, uint64_t *timer, char *s_buf,
   __syncthreads();
 
   if (hipThreadIdx_x == 0) {
-    timer[hipBlockIdx_x] = rocshmem_timer() - start;
+    end_time[wg_id] = wall_clock64();
   }
 
   rocshmem_wg_ctx_destroy(&ctx);
@@ -90,8 +97,9 @@ __global__ void PrimitiveTest(int loop, int skip, uint64_t *timer, char *s_buf,
  * HOST TESTER CLASS METHODS
  *****************************************************************************/
 PrimitiveTester::PrimitiveTester(TesterArguments args) : Tester(args) {
-  s_buf = (char *)rocshmem_malloc(args.max_msg_size * args.wg_size);
-  r_buf = (char *)rocshmem_malloc(args.max_msg_size * args.wg_size);
+  size_t buff_size = args.max_msg_size * args.wg_size * args.num_wgs;
+  s_buf = (char *)rocshmem_malloc(buff_size);
+  r_buf = (char *)rocshmem_malloc(buff_size);
 }
 
 PrimitiveTester::~PrimitiveTester() {
@@ -100,8 +108,9 @@ PrimitiveTester::~PrimitiveTester() {
 }
 
 void PrimitiveTester::resetBuffers(uint64_t size) {
-  memset(s_buf, '0', args.max_msg_size * args.wg_size);
-  memset(r_buf, '1', args.max_msg_size * args.wg_size);
+  size_t buff_size = size * args.wg_size * args.num_wgs;
+  memset(s_buf, '0', buff_size);
+  memset(r_buf, '1', buff_size);
 }
 
 void PrimitiveTester::launchKernel(dim3 gridSize, dim3 blockSize, int loop,
@@ -109,11 +118,11 @@ void PrimitiveTester::launchKernel(dim3 gridSize, dim3 blockSize, int loop,
   size_t shared_bytes = 0;
 
   hipLaunchKernelGGL(PrimitiveTest, gridSize, blockSize, shared_bytes, stream,
-                     loop, args.skip, timer, s_buf, r_buf, size, _type,
-                     _shmem_context);
+                     loop, args.skip, start_time, end_time, s_buf, r_buf,
+                     size, _type, _shmem_context);
 
-  num_msgs = (loop + args.skip) * gridSize.x;
-  num_timed_msgs = loop;
+  num_msgs = (loop + args.skip) * gridSize.x * blockSize.x;
+  num_timed_msgs = loop * gridSize.x * blockSize.x;
 }
 
 void PrimitiveTester::verifyResults(uint64_t size) {
@@ -123,7 +132,8 @@ void PrimitiveTester::verifyResults(uint64_t size) {
           : 1;
 
   if (args.myid == check_id) {
-    for (uint64_t i = 0; i < size; i++) {
+    size_t buff_size = size * args.wg_size * args.num_wgs;
+    for (uint64_t i = 0; i < buff_size; i++) {
       if (r_buf[i] != '0') {
         fprintf(stderr, "Data validation error at idx %lu\n", i);
         fprintf(stderr, "Got %c, Expected %c\n", r_buf[i], '0');

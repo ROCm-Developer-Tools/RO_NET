@@ -36,8 +36,12 @@ class SyncTester : public Tester {
  protected:
   virtual void resetBuffers(uint64_t size) override;
 
+  virtual void preLaunchKernel() override;
+
   virtual void launchKernel(dim3 gridSize, dim3 blockSize, int loop,
                             uint64_t size) override;
+
+  virtual void postLaunchKernel() override;
 
   virtual void verifyResults(uint64_t size) override;
 };
