@@ -376,6 +376,8 @@ static MPI_Datatype convertType(ro_net_types type) {
       return MPI_INT;
     case RO_NET_LONG:
       return MPI_LONG;
+    case RO_NET_UNSIGNED_LONG:
+      return MPI_UNSIGNED_LONG;
     case RO_NET_LONG_LONG:
       return MPI_LONG_LONG;
     case RO_NET_SHORT:

@@ -229,6 +229,27 @@ class ROContext : public Context {
   template <typename T>
   __device__ void get_nbi_wave(T *dest, const T *source, size_t nelems, int pe);
 
+#define RO_CONTEXT_PUT_SIGNAL_DEC(SUFFIX)                                                \
+  template <typename T>                                                                  \
+  __device__ void put_signal##SUFFIX(T *dest, const T *source, size_t nelems,            \
+                                     uint64_t *sig_addr, uint64_t signal, int sig_op,    \
+                                     int pe);                                            \
+                                                                                         \
+  __device__ void putmem_signal##SUFFIX(void *dest, const void *source, size_t nelems,   \
+                                        uint64_t *sig_addr, uint64_t signal, int sig_op, \
+                                        int pe);
+
+  RO_CONTEXT_PUT_SIGNAL_DEC()
+  RO_CONTEXT_PUT_SIGNAL_DEC(_wg)
+  RO_CONTEXT_PUT_SIGNAL_DEC(_wave)
+  RO_CONTEXT_PUT_SIGNAL_DEC(_nbi)
+  RO_CONTEXT_PUT_SIGNAL_DEC(_nbi_wg)
+  RO_CONTEXT_PUT_SIGNAL_DEC(_nbi_wave)
+
+  __device__ uint64_t signal_fetch(const uint64_t *sig_addr);
+  __device__ uint64_t signal_fetch_wg(const uint64_t *sig_addr);
+  __device__ uint64_t signal_fetch_wave(const uint64_t *sig_addr);
+
  private:
   __device__ uint64_t *get_unused_atomic();
 
