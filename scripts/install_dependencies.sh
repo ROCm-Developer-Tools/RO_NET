@@ -1,24 +1,27 @@
 #!/bin/bash
-
 set -e
 set -o pipefail
 
+# ROCm location
 if [[ -z "${_ROCM_DIR}" ]]; then
   export _ROCM_DIR=/opt/rocm
 fi
 
-# Location of dependencies source code
-export _INSTALL_DIR=$HOME/installDIR
-export _DEPS_SRC_DIR=$_INSTALL_DIR/src
+# Location to install dependencies
+if [[ -z "${_PREFIX}" ]]; then
+  export _PREFIX=$HOME/installDIR
+fi
 
+# Location of dependencies source code
+export _DEPS_SRC_DIR=$_PREFIX/src
 mkdir -p $_DEPS_SRC_DIR
 
 #Adjust branches and installation location as necessary
-export _UCX_INSTALL_DIR=$_INSTALL_DIR/ucx
+export _UCX_INSTALL_DIR=$_PREFIX
 export _UCX_REPO=https://github.com/openucx/ucx.git
 export _UCX_BRANCH=v1.17.x
 
-export _OMPI_INSTALL_DIR=$_INSTALL_DIR/ompi
+export _OMPI_INSTALL_DIR=$_PREFIX
 export _OMPI_REPO=https://github.com/open-mpi/ompi.git
 export _OMPI_BRANCH=v5.0.x
 
