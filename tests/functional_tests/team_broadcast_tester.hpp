@@ -28,15 +28,15 @@
 
 #include "tester.hpp"
 
+using namespace rocshmem;
+
 /************* *****************************************************************
  * HOST TESTER CLASS
  *****************************************************************************/
 template <typename T1>
 class TeamBroadcastTester : public Tester {
  public:
-  explicit TeamBroadcastTester(
-      TesterArguments args, std::function<void(T1 &, T1 &)> f1,
-      std::function<std::pair<bool, std::string>(const T1 &)> f2);
+  explicit TeamBroadcastTester(TesterArguments args);
   virtual ~TeamBroadcastTester();
 
  protected:
@@ -54,9 +54,13 @@ class TeamBroadcastTester : public Tester {
   T1 *source_buf;
   T1 *dest_buf;
 
- private:
-  std::function<void(T1 &, T1 &)> init_buf;
-  std::function<std::pair<bool, std::string>(const T1 &)> verify_buf;
+private:
+  /**
+   * This constant should equal ROCSHMEM_MAX_NUM_TEAMS - 1.
+   * The default value for the maximum number of teams is 40.
+   */
+  int num_teams = 39;
+  rocshmem_team_t *team_bcast_world_dup;
 };
 
 #include "team_broadcast_tester.cpp"

@@ -27,6 +27,7 @@
 #include <vector>
 
 #include "tester_arguments.hpp"
+#include "../src/util.hpp"
 
 /******************************************************************************
  * TESTER CLASS TYPES
@@ -126,6 +127,8 @@ class Tester {
   int num_warps = 0;
   int bw_factor = 1;
   int device_id = 0;
+  int wall_clk_rate = 0; //in kilohertz
+  int wf_size = 0;
 
   TesterArguments args;
 
@@ -136,6 +139,11 @@ class Tester {
   hipDeviceProp_t deviceProps;
 
   uint64_t *timer = nullptr;
+  uint64_t *start_time = nullptr;
+  uint64_t *end_time = nullptr;
+  uint64_t min_start_time = 0;
+  uint64_t max_end_time = 0;
+  uint32_t num_timers = 0;
 
  private:
   bool _print_header = 1;
@@ -143,9 +151,9 @@ class Tester {
 
   void barrier();
 
-  uint64_t gpuCyclesToMicroseconds(uint64_t cycles);
+  double gpuCyclesToMicroseconds(uint64_t cycles);
 
-  uint64_t timerAvgInMicroseconds();
+  double timerAvgInMicroseconds();
 
   bool peLaunchesKernel();
 

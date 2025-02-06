@@ -20,10 +20,6 @@
  * IN THE SOFTWARE.
  *****************************************************************************/
 
-using namespace rocshmem;
-
-rocshmem_team_t team_fcollect_world_dup;
-
 /* Declare the template with a generic implementation */
 template <typename T>
 __device__ void wg_fcollect(rocshmem_ctx_t ctx, rocshmem_team_t team, T *dest,
@@ -58,23 +54,27 @@ FCOLLECT_DEF_GEN(unsigned long long, ulonglong)
  * DEVICE TEST KERNEL
  *****************************************************************************/
 template <typename T1>
-__global__ void FcollectTest(int loop, int skip, uint64_t *timer,
-                             T1 *source_buf, T1 *dest_buf, int size,
-                             ShmemContextType ctx_type, rocshmem_team_t team) {
+__global__ void FcollectTest(int loop, int skip, uint64_t *start_time,
+                             uint64_t *end_time, T1 *source_buf, T1 *dest_buf,
+                             int size, ShmemContextType ctx_type,
+                             rocshmem_team_t *teams) {
   __shared__ rocshmem_ctx_t ctx;
+  int wg_id = get_flat_grid_id();
 
   rocshmem_wg_init();
-  rocshmem_wg_ctx_create(ctx_type, &ctx);
+  rocshmem_wg_team_create_ctx(teams[wg_id], ctx_type, &ctx);
 
   int n_pes = rocshmem_ctx_n_pes(ctx);
+  source_buf += wg_id * size;
+  dest_buf += wg_id * size * n_pes;
+
   __syncthreads();
 
-  uint64_t start;
   for (int i = 0; i < loop + skip; i++) {
     if (i == skip && hipThreadIdx_x == 0) {
-      start = rocshmem_timer();
+      start_time[wg_id] = wall_clock64();
     }
-    wg_fcollect<T1>(ctx, team,
+    wg_fcollect<T1>(ctx, teams[wg_id],
                     dest_buf,    // T* dest
                     source_buf,  // const T* source
                     size);       // int nelement
@@ -83,7 +83,7 @@ __global__ void FcollectTest(int loop, int skip, uint64_t *timer,
   __syncthreads();
 
   if (hipThreadIdx_x == 0) {
-    timer[hipBlockIdx_x] = rocshmem_timer() - start;
+    end_time[wg_id] = wall_clock64();
   }
 
   rocshmem_wg_ctx_destroy(&ctx);
@@ -94,29 +94,65 @@ __global__ void FcollectTest(int loop, int skip, uint64_t *timer,
  * HOST TESTER CLASS METHODS
  *****************************************************************************/
 template <typename T1>
-FcollectTester<T1>::FcollectTester(
-    TesterArguments args, std::function<void(T1 &, T1 &)> f1,
-    std::function<std::pair<bool, std::string>(const T1 &, T1)> f2)
-    : Tester(args), init_buf{f1}, verify_buf{f2} {
+FcollectTester<T1>::FcollectTester(TesterArguments args)
+    : Tester(args) {
+  int my_pe = rocshmem_team_my_pe(ROCSHMEM_TEAM_WORLD);
   int n_pes = rocshmem_team_n_pes(ROCSHMEM_TEAM_WORLD);
-  source_buf = (T1 *)rocshmem_malloc(args.max_msg_size * sizeof(T1));
-  dest_buf = (T1 *)rocshmem_malloc(args.max_msg_size * sizeof(T1) * n_pes);
+
+  int num_elems = (args.max_msg_size / sizeof(T1)) * args.num_wgs ;
+  int buff_size = num_elems * sizeof(T1);
+
+  source_buf = (T1 *)rocshmem_malloc(buff_size);
+  dest_buf = (T1 *)rocshmem_malloc(buff_size * n_pes);
+
+  if constexpr (std::is_same<T1, char>::value ||
+                std::is_same<T1, signed char>::value ||
+                std::is_same<T1, unsigned char>::value) {
+    for (int i = 0; i < num_elems; ++i) {
+      source_buf[i] = static_cast<T1>('a' + my_pe);
+    }
+  }
+  else if constexpr (std::is_floating_point<T1>::value) {
+    for (int i = 0; i < num_elems; ++i) {
+      source_buf[i] = static_cast<T1>(3.14 + my_pe);
+    }
+  }
+  else if constexpr (std::is_integral<T1>::value) {
+    for (int i = 0; i < num_elems; i++) {
+      source_buf[i] = static_cast<T1>(my_pe);
+    }
+  }
+
+  char* value{nullptr};
+  if ((value = getenv("ROCSHMEM_MAX_NUM_TEAMS"))) {
+    num_teams = atoi(value);
+  }
+
+  CHECK_HIP(hipMalloc(&team_fcollect_world_dup,
+                      sizeof(rocshmem_team_t) * num_teams));
 }
 
 template <typename T1>
 FcollectTester<T1>::~FcollectTester() {
   rocshmem_free(source_buf);
   rocshmem_free(dest_buf);
+  CHECK_HIP(hipFree(team_fcollect_world_dup));
 }
 
 template <typename T1>
 void FcollectTester<T1>::preLaunchKernel() {
   int n_pes = rocshmem_team_n_pes(ROCSHMEM_TEAM_WORLD);
-  bw_factor = sizeof(T1) * n_pes;
+  bw_factor = n_pes;
 
-  team_fcollect_world_dup = ROCSHMEM_TEAM_INVALID;
-  rocshmem_team_split_strided(ROCSHMEM_TEAM_WORLD, 0, 1, n_pes, nullptr, 0,
-                               &team_fcollect_world_dup);
+  for (int team_i = 0; team_i < num_teams; team_i++) {
+    team_fcollect_world_dup[team_i] = ROCSHMEM_TEAM_INVALID;
+    rocshmem_team_split_strided(ROCSHMEM_TEAM_WORLD, 0, 1, n_pes, nullptr, 0,
+                                 &team_fcollect_world_dup[team_i]);
+    if (team_fcollect_world_dup[team_i] == ROCSHMEM_TEAM_INVALID) {
+      std::cout << "Team " << team_i << " is invalid!" << std::endl;
+      abort();
+    }
+  }
 }
 
 template <typename T1>
@@ -124,42 +160,66 @@ void FcollectTester<T1>::launchKernel(dim3 gridSize, dim3 blockSize, int loop,
                                       uint64_t size) {
   size_t shared_bytes = 0;
 
+  int num_elems = size / sizeof(T1);
+
+  int my_pe = rocshmem_team_my_pe(ROCSHMEM_TEAM_WORLD);
+  int n_pes = rocshmem_team_n_pes(ROCSHMEM_TEAM_WORLD);
+
   hipLaunchKernelGGL(FcollectTest<T1>, gridSize, blockSize, shared_bytes,
-                     stream, loop, args.skip, timer, source_buf, dest_buf, size,
+                     stream, loop, args.skip, start_time, end_time,
+                     source_buf, dest_buf, num_elems,
                      _shmem_context, team_fcollect_world_dup);
 
-  num_msgs = loop + args.skip;
-  num_timed_msgs = loop;
+  num_msgs = (loop + args.skip) * gridSize.x;
+  num_timed_msgs = loop * gridSize.x;
 }
 
 template <typename T1>
 void FcollectTester<T1>::postLaunchKernel() {
-  rocshmem_team_destroy(team_fcollect_world_dup);
+  for (int team_i = 0; team_i < num_teams; team_i++) {
+    rocshmem_team_destroy(team_fcollect_world_dup[team_i]);
+  }
 }
 
 template <typename T1>
 void FcollectTester<T1>::resetBuffers(uint64_t size) {
   int n_pes = rocshmem_team_n_pes(ROCSHMEM_TEAM_WORLD);
-  for (int i = 0; i < n_pes; i++) {
-    for (uint64_t j = 0; j < size; j++) {
-      // Note: This is redundant work,
-      // source is being reinitialized multiple times
-      init_buf(source_buf[j], dest_buf[i * size + j]);
-    }
-  }
+  int num_elems = (size / sizeof(T1));
+  int buff_size = num_elems * sizeof(T1) * args.num_wgs * n_pes;
+
+  memset(dest_buf, -1, buff_size);
 }
 
 template <typename T1>
 void FcollectTester<T1>::verifyResults(uint64_t size) {
+  int my_pe = rocshmem_team_my_pe(ROCSHMEM_TEAM_WORLD);
   int n_pes = rocshmem_team_n_pes(ROCSHMEM_TEAM_WORLD);
-  for (int i = 0; i < n_pes; i++) {
-    for (uint64_t j = 0; j < size; j++) {
-      auto r = verify_buf(dest_buf[i * size + j], i);
-      if (r.first == false) {
-        fprintf(stderr, "Data validation error at idx %lu\n", j);
-        fprintf(stderr, "%s.\n", r.second.c_str());
-        // exit(-1);
-        return;
+
+  int num_elems = size / sizeof(T1);
+  int idx = 0;
+  T1 expected;
+
+  for(int wg_id = 0; wg_id < args.num_wgs; wg_id++) {
+    for(int pe = 0; pe < n_pes; pe++) {
+      for(int i = 0; i < num_elems; i++) {
+        idx = (wg_id * n_pes + pe) * num_elems + i;
+        if constexpr (std::is_same<T1, char>::value ||
+              std::is_same<T1, signed char>::value ||
+              std::is_same<T1, unsigned char>::value) {
+          expected = static_cast<T1>('a' + pe);
+        }
+        else if constexpr (std::is_floating_point<T1>::value) {
+          expected = static_cast<T1>(3.14 + pe);
+        }
+        else if constexpr (std::is_integral<T1>::value) {
+          expected = pe;
+        }
+        if (dest_buf[idx] != expected) {
+          std::cerr << "Data validation error at idx " << idx << std::endl;
+          std::cerr << "PE " << my_pe << " Got " << dest_buf[idx]
+          << ", Expected " << expected << std::endl;
+          exit(-1);
+        }
       }
     }
   }

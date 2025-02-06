@@ -24,6 +24,9 @@
 #define _SYNC_TESTER_HPP_
 
 #include "tester.hpp"
+#include <rocshmem/rocshmem.hpp>
+
+using namespace rocshmem;
 
 /******************************************************************************
  * HOST TESTER CLASS
@@ -36,10 +39,22 @@ class SyncTester : public Tester {
  protected:
   virtual void resetBuffers(uint64_t size) override;
 
+  virtual void preLaunchKernel() override;
+
   virtual void launchKernel(dim3 gridSize, dim3 blockSize, int loop,
                             uint64_t size) override;
 
+  virtual void postLaunchKernel() override;
+
   virtual void verifyResults(uint64_t size) override;
+
+private:
+  /**
+   * This constant should equal ROCSHMEM_MAX_NUM_TEAMS - 1.
+   * The default value for the maximum number of teams is 40.
+   */
+  int num_teams = 39;
+  rocshmem_team_t *team_sync_world_dup;
 };
 
 #endif

@@ -43,8 +43,11 @@ class SignalingOperationsTester : public Tester {
 
   char *s_buf = nullptr;
   char *r_buf = nullptr;
-  uint64_t *sig_addr;
-  uint64_t *fetched_value;
+  uint64_t *sig_addr = nullptr;
+  uint64_t *fetched_value = nullptr;
+  size_t buff_size = 0;
+  int num_signals = 0;
+  TestType type;
 };
 
 #endif

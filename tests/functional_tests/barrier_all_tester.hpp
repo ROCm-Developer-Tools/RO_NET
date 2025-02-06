@@ -24,6 +24,7 @@
 #define _BARRIER_ALL_TESTER_HPP_
 
 #include "tester.hpp"
+#include "../src/util.hpp"
 
 /******************************************************************************
  * DEVICE TEST KERNEL

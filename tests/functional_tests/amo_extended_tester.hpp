@@ -42,10 +42,10 @@ class AMOExtendedTester : public Tester {
 
   virtual void verifyResults(uint64_t size) override;
 
-  dim3 _gridSize{};
   char *_r_buf;
   T *_ret_val;
   T *_s_buf;
+  int total_msgs = 0;
 };
 
 #endif

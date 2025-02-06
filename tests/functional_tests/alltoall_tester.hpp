@@ -28,15 +28,15 @@
 
 #include "tester.hpp"
 
+using namespace rocshmem;
+
 /************* *****************************************************************
  * HOST TESTER CLASS
  *****************************************************************************/
 template <typename T1>
 class AlltoallTester : public Tester {
  public:
-  explicit AlltoallTester(
-      TesterArguments args, std::function<void(T1 &, T1 &, T1)> f1,
-      std::function<std::pair<bool, std::string>(const T1 &, T1)> f2);
+  explicit AlltoallTester(TesterArguments args);
   virtual ~AlltoallTester();
 
  protected:
@@ -51,12 +51,19 @@ class AlltoallTester : public Tester {
 
   virtual void verifyResults(uint64_t size) override;
 
-  T1 *source_buf;
-  T1 *dest_buf;
+  T1 *source_buf = nullptr;
+  T1 *dest_buf = nullptr;
 
- private:
-  std::function<void(T1 &, T1 &, T1)> init_buf;
-  std::function<std::pair<bool, std::string>(const T1 &, T1)> verify_buf;
+private:
+  int my_pe = 0;
+  int n_pes = 0;
+
+  /**
+   * This constant should equal ROCSHMEM_MAX_NUM_TEAMS - 1.
+   * The default value for the maximum number of teams is 40.
+   */
+  int num_teams = 39;
+  rocshmem_team_t *team_alltoall_world_dup;
 };
 
 #include "alltoall_tester.cpp"

@@ -31,26 +31,25 @@ using namespace rocshmem;
 /******************************************************************************
  * DEVICE TEST KERNEL
  *****************************************************************************/
-__global__ void ExtendedPrimitiveTest(int loop, int skip, uint64_t *timer,
-                                      char *s_buf, char *r_buf, int size,
-                                      TestType type,
+__global__ void ExtendedPrimitiveTest(int loop, int skip, uint64_t *start_time,
+                                      uint64_t *end_time, char *s_buf,
+                                      char *r_buf, int size, TestType type,
                                       ShmemContextType ctx_type) {
   __shared__ rocshmem_ctx_t ctx;
   rocshmem_wg_init();
   rocshmem_wg_ctx_create(ctx_type, &ctx);
 
-  /**
-   * Calculate start index for each work group for tiled version
-   * If the number of work groups is greater than 1, this kernel performs a
-   * tiled functional test
-  */
-  uint64_t start;
-  uint64_t idx = size * get_flat_grid_id();
-  s_buf += idx;
-  r_buf += idx;
+  
+  // Calculate start index for each work group
+  int wg_id = get_flat_grid_id();
+  uint64_t offset = size * wg_id;
+  s_buf += offset;
+  r_buf += offset;
 
   for (int i = 0; i < loop + skip; i++) {
-    if (i == skip) start = rocshmem_timer();
+    if (i == skip) {
+        start_time[wg_id] = wall_clock64();
+    }
 
     switch (type) {
       case WGGetTestType:
@@ -73,7 +72,7 @@ __global__ void ExtendedPrimitiveTest(int loop, int skip, uint64_t *timer,
   rocshmem_ctx_quiet(ctx);
 
   if (hipThreadIdx_x == 0) {
-    timer[hipBlockIdx_x] = rocshmem_timer() - start;
+    end_time[wg_id] = wall_clock64();
   }
 
   rocshmem_wg_ctx_destroy(&ctx);
@@ -105,8 +104,8 @@ void ExtendedPrimitiveTester::launchKernel(dim3 gridSize, dim3 blockSize,
   size_t shared_bytes = 0;
 
   hipLaunchKernelGGL(ExtendedPrimitiveTest, gridSize, blockSize, shared_bytes,
-                     stream, loop, args.skip, timer, (char*)s_buf,
-                     (char*)r_buf, size, _type, _shmem_context);
+                     stream, loop, args.skip, start_time, end_time,
+                     (char*)s_buf, (char*)r_buf, size, _type, _shmem_context);
 
   num_msgs = (loop + args.skip) * gridSize.x;
   num_timed_msgs = loop * gridSize.x;

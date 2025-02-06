@@ -97,6 +97,12 @@ TesterArguments::TesterArguments(int argc, char *argv[]) {
     case RandomAccessTestType:
       min_msg_size = 4;
       break;
+    case FCollectTestType:
+    case AllToAllTestType:
+    case TeamBroadcastTestType:
+    case TeamReductionTestType:
+      min_msg_size = 8;
+      break;
     case TeamCtxInfraTestType:
       max_msg_size = min_msg_size;
       break;

@@ -29,26 +29,27 @@ using namespace rocshmem;
 /******************************************************************************
  * DEVICE TEST KERNEL
  *****************************************************************************/
-__global__ void BarrierAllTest(int loop, int skip, uint64_t *timer) {
+__global__ void BarrierAllTest(int loop, int skip, uint64_t *start_time,
+                               uint64_t *end_time) {
   __shared__ rocshmem_ctx_t ctx;
 
   rocshmem_wg_init();
   rocshmem_wg_ctx_create(ROCSHMEM_CTX_WG_PRIVATE, &ctx);
 
-  uint64_t start;
   for (int i = 0; i < loop + skip; i++) {
     if (hipThreadIdx_x == 0 && i == skip) {
-      start = rocshmem_timer();
+      start_time[hipBlockIdx_x] = wall_clock64();
     }
 
     __syncthreads();
 
-    rocshmem_ctx_wg_barrier_all(ctx);
+    if (is_block_zero_in_grid())
+      rocshmem_ctx_wg_barrier_all(ctx);
   }
   __syncthreads();
 
   if (hipThreadIdx_x == 0) {
-    timer[hipBlockIdx_x] = rocshmem_timer() - start;
+    end_time[hipBlockIdx_x] = wall_clock64();
   }
 
   rocshmem_wg_ctx_destroy(&ctx);
@@ -67,9 +68,9 @@ void BarrierAllTester::launchKernel(dim3 gridSize, dim3 blockSize, int loop,
   size_t shared_bytes = 0;
 
   hipLaunchKernelGGL(BarrierAllTest, gridSize, blockSize, shared_bytes, stream,
-                     loop, args.skip, timer);
+                     loop, args.skip, start_time, end_time);
 
-  num_msgs = (loop + args.skip) * gridSize.x;
+  num_msgs = loop + args.skip;
   num_timed_msgs = loop;
 }
 

@@ -59,13 +59,32 @@ Tester::Tester(TesterArguments args) : args(args) {
   CHECK_HIP(hipGetDevice(&device_id));
   CHECK_HIP(hipGetDeviceProperties(&deviceProps, device_id));
   num_warps = (args.wg_size - 1) / deviceProps.warpSize + 1;
+  wf_size = deviceProps.warpSize;
   CHECK_HIP(hipStreamCreate(&stream));
   CHECK_HIP(hipEventCreate(&start_event));
   CHECK_HIP(hipEventCreate(&stop_event));
-  CHECK_HIP(hipMalloc((void**)&timer, sizeof(uint64_t) * args.num_wgs));
+  CHECK_HIP(hipDeviceGetAttribute(&wall_clk_rate,
+    hipDeviceAttributeWallClockRate, device_id));
+  num_timers = args.num_wgs;
+  TestType type = (TestType)args.algorithm;
+  switch (type) {
+    case WAVEGetTestType:
+    case WAVEGetNBITestType:
+    case WAVEPutTestType:
+    case WAVEPutNBITestType:
+      num_timers = args.num_wgs * num_warps;
+      break;
+    default:
+      break;
+  }
+  CHECK_HIP(hipMalloc((void**)&timer, sizeof(uint64_t) * num_timers));
+  CHECK_HIP(hipMalloc((void**)&start_time, sizeof(uint64_t) * num_timers));
+  CHECK_HIP(hipMalloc((void**)&end_time, sizeof(uint64_t) * num_timers));
 }
 
 Tester::~Tester() {
+  CHECK_HIP(hipFree(end_time));
+  CHECK_HIP(hipFree(start_time));
   CHECK_HIP(hipFree(timer));
   CHECK_HIP(hipEventDestroy(stop_event));
   CHECK_HIP(hipEventDestroy(start_event));
@@ -75,11 +94,6 @@ Tester::~Tester() {
 std::vector<Tester*> Tester::create(TesterArguments args) {
   int rank = args.myid;
   std::vector<Tester*> testers;
-  hipDeviceProp_t deviceProps;
-  int device_id, numWarps;
-  CHECK_HIP(hipGetDevice(&device_id));
-  CHECK_HIP(hipGetDeviceProperties(&deviceProps, device_id));
-  numWarps = (args.wg_size - 1) / deviceProps.warpSize + 1;
 
   if (rank == 0) std::cout << "### Creating Test: ";
 
@@ -159,85 +173,38 @@ std::vector<Tester*> Tester::create(TesterArguments args) {
       if (rank == 0) {
         std::cout << "Team Broadcast Test ###" << std::endl;
       }
-      testers.push_back(new TeamBroadcastTester<long>(
-          args,
-          [](long& f1, long& f2) {
-            f1 = 1;
-            f2 = 2;
-          },
-          [rank](long v) {
-            long expected_val;
-            /**
-             * The verification routine here requires that the
-             * PE_root value is 0 which denotes that the
-             * sending processing element is rank 0.
-             *
-             * The difference in expected values arises from
-             * the specification for broadcast where the
-             * PE_root processing element does not copy the
-             * contents from its own source to dest during
-             * the broadcast.
-             */
-            if (rank == 0) {
-              expected_val = 2;
-            } else {
-              expected_val = 1;
-            }
+      testers.push_back(new TeamBroadcastTester<int64_t>(args));
+      testers.push_back(new TeamBroadcastTester<int>(args));
+      testers.push_back(new TeamBroadcastTester<long long>(args));
+      testers.push_back(new TeamBroadcastTester<float>(args));
+      testers.push_back(new TeamBroadcastTester<double>(args));
+      testers.push_back(new TeamBroadcastTester<char>(args));
+      testers.push_back(new TeamBroadcastTester<unsigned char>(args));
 
-            return (v == expected_val)
-                       ? std::make_pair(true, "")
-                       : std::make_pair(
-                             false, "Rank " + std::to_string(rank) + ", Got " +
-                                        std::to_string(v) + ", Expect " +
-                                        std::to_string(expected_val));
-          }));
       return testers;
     case AllToAllTestType:
       if (rank == 0) {
         std::cout << "Alltoall Test ###" << std::endl;
       }
-      testers.push_back(new AlltoallTester<int64_t>(
-          args,
-          [rank](int64_t& f1, int64_t& f2, int64_t dest_pe) {
-            const long SRC_SHIFT = 16;
-            // Make value for each src, dst pair unique
-            // by shifting src by SRC_SHIFT bits
-            f1 = (rank << SRC_SHIFT) + dest_pe;
-            f2 = -1;
-          },
-          [rank](int64_t v, int64_t src_pe) {
-            const long SRC_SHIFT = 16;
-            // See if we obtained unique value
-            long expected_val = (src_pe << SRC_SHIFT) + rank;
-
-            return (v == expected_val)
-                       ? std::make_pair(true, "")
-                       : std::make_pair(
-                             false, "Rank " + std::to_string(rank) + ", Got " +
-                                        std::to_string(v) + ", Expect " +
-                                        std::to_string(expected_val));
-          }));
+      testers.push_back(new AlltoallTester<int64_t>(args));
+      testers.push_back(new AlltoallTester<int>(args));
+      testers.push_back(new AlltoallTester<long long>(args));
+      testers.push_back(new AlltoallTester<float>(args));
+      testers.push_back(new AlltoallTester<double>(args));
+      testers.push_back(new AlltoallTester<char>(args));
+      testers.push_back(new AlltoallTester<unsigned char>(args));
       return testers;
     case FCollectTestType:
       if (rank == 0) {
         std::cout << "Fcollect Test ###" << std::endl;
       }
-      testers.push_back(new FcollectTester<int64_t>(
-          args,
-          [rank](int64_t& f1, int64_t& f2) {
-            f1 = rank;
-            f2 = -1;
-          },
-          [rank](int64_t v, int64_t src_pe) {
-            int64_t expected_val = src_pe;
-
-            return (v == expected_val)
-                       ? std::make_pair(true, "")
-                       : std::make_pair(
-                             false, "Rank " + std::to_string(rank) + ", Got " +
-                                        std::to_string(v) + ", Expect " +
-                                        std::to_string(expected_val));
-          }));
+      testers.push_back(new FcollectTester<int64_t>(args));
+      testers.push_back(new FcollectTester<int>(args));
+      testers.push_back(new FcollectTester<long long>(args));
+      testers.push_back(new FcollectTester<float>(args));
+      testers.push_back(new FcollectTester<double>(args));
+      testers.push_back(new FcollectTester<char>(args));
+      testers.push_back(new FcollectTester<unsigned char>(args));
       return testers;
     case AMO_FAddTestType:
       if (rank == 0) std::cout << "AMO Fetch_Add ###" << std::endl;
@@ -352,35 +319,22 @@ std::vector<Tester*> Tester::create(TesterArguments args) {
       testers.push_back(new ShmemPtrTester(args));
       return testers;
     case WGGetTestType:
-      if (rank == 0) {
-        if (args.num_wgs > 1)
-          std::cout << "Tiled Blocking WG level Gets ###" << std::endl;
-        else std::cout << "Blocking WG level Gets ###" << std::endl;
-      }
+      if (rank == 0)
+        std::cout << "Blocking WG level Gets ###" << std::endl;
       testers.push_back(new ExtendedPrimitiveTester(args));
       return testers;
     case WGGetNBITestType:
-      if (rank == 0) {
-        if (args.num_wgs > 1)
-          std::cout << "Tiled Non-Blocking WG level Gets ###" << std::endl;
-        else std::cout << "Non-Blocking WG level Gets ###" << std::endl;
-      }
+      if (rank == 0)
+        std::cout << "Non-Blocking WG level Gets ###" << std::endl;
       testers.push_back(new ExtendedPrimitiveTester(args));
       return testers;
     case WGPutTestType:
-      if (rank == 0) {
-        if (args.num_wgs > 1)
-          std::cout << "Tiled Blocking WG level Puts ###" << std::endl;
-        else std::cout << "Blocking WG level Puts ###" << std::endl;
-      }
+      if (rank == 0) std::cout << "Blocking WG level Puts ###" << std::endl;
       testers.push_back(new ExtendedPrimitiveTester(args));
       return testers;
     case WGPutNBITestType:
-      if (rank == 0) {
-        if (args.num_wgs > 1)
-          std::cout << "Tiled Non-Blocking WG level Puts ###" << std::endl;
-        else std::cout << "Non-Blocking WG level Puts ###" << std::endl;
-      }
+      if (rank == 0)
+        std::cout << "Non-Blocking WG level Puts ###" << std::endl;
       testers.push_back(new ExtendedPrimitiveTester(args));
       return testers;
     case PutNBIMRTestType:
@@ -389,35 +343,22 @@ std::vector<Tester*> Tester::create(TesterArguments args) {
       testers.push_back(new PrimitiveMRTester(args));
       return testers;
     case WAVEGetTestType:
-      if (rank == 0) {
-        if (args.num_wgs > 1 || numWarps > 1)
-          std::cout << "Tiled Blocking WAVE level Gets ###" << std::endl;
-        else std::cout << "Blocking WAVE level Gets ###" << std::endl;
-      }
+      if (rank == 0)
+        std::cout << "Blocking WAVE level Gets ###" << std::endl;
       testers.push_back(new WaveLevelPrimitiveTester(args));
       return testers;
     case WAVEGetNBITestType:
-      if (rank == 0) {
-        if (args.num_wgs > 1 || numWarps > 1)
-          std::cout << "Tiled Non-Blocking WAVE level Gets ###" << std::endl;
-        else std::cout << "Non-Blocking WAVE level Gets ###" << std::endl;
-      }
+      if (rank == 0)
+        std::cout << "Non-Blocking WAVE level Gets ###" << std::endl;
       testers.push_back(new WaveLevelPrimitiveTester(args));
       return testers;
     case WAVEPutTestType:
-      if (rank == 0) {
-        if (args.num_wgs > 1 || numWarps > 1)
-          std::cout << "Tiled Blocking WAVE level Puts ###" << std::endl;
-        else std::cout << "Blocking WAVE level Puts ###" << std::endl;
-      }
+      if (rank == 0) std::cout << "Blocking WAVE level Puts ###" << std::endl;
       testers.push_back(new WaveLevelPrimitiveTester(args));
       return testers;
     case WAVEPutNBITestType:
-      if (rank == 0) {
-        if (args.num_wgs > 1 || numWarps > 1)
-          std::cout << "Tiled Non-Blocking WAVE level Puts ###" << std::endl;
-        else std::cout << "Non-Blocking WAVE level Puts ###" << std::endl;
-      }
+      if (rank == 0)
+        std::cout << "Non-Blocking WAVE level Puts ###" << std::endl;
       testers.push_back(new WaveLevelPrimitiveTester(args));
       return testers;
     case PutSignalTestType:
@@ -527,32 +468,10 @@ void Tester::execute() {
     // data validation
     verifyResults(size);
 
-    /**
-     * Adjust size for *_wg and *_wave functions
-    */
-    uint64_t size_ = size;
-    TestType type = (TestType)args.algorithm;
-    switch (type) {
-      case WAVEGetTestType:
-      case WAVEGetNBITestType:
-      case WAVEPutTestType:
-      case WAVEPutNBITestType:
-        size_ *= (args.num_wgs * num_warps);
-        break;
-      case WGGetTestType:
-      case WGGetNBITestType:
-      case WGPutTestType:
-      case WGPutNBITestType:
-        size_ *= args.num_wgs;
-        break;
-      default:
-        break;
-    }
-
     barrier();
 
     if (_type != TeamCtxInfraTestType) {
-      print(size_);
+      print(size);
     }
   }
 }
@@ -583,6 +502,10 @@ void Tester::print(uint64_t size) {
     return;
   }
 
+  /**
+   * Calculate total amount of data transfered
+   */
+  uint64_t total_size = size * num_timed_msgs;
   uint64_t timer_avg = timerAvgInMicroseconds();
   double latency_avg = static_cast<double>(timer_avg) / num_timed_msgs;
   double avg_msg_rate = num_timed_msgs / (timer_avg / 1e6);
@@ -590,26 +513,32 @@ void Tester::print(uint64_t size) {
   float total_kern_time_ms;
   CHECK_HIP(hipEventElapsedTime(&total_kern_time_ms, start_event, stop_event));
   float total_kern_time_s = total_kern_time_ms / 1000;
+
+  double time_ms = gpuCyclesToMicroseconds(max_end_time - min_start_time);
+  double time_s = time_ms / 1e6;
   double bandwidth_avg_gbs =
-      num_msgs * size * bw_factor / total_kern_time_s / pow(2, 30);
+      static_cast<double>(total_size * bw_factor) / time_s / pow(2, 30);
 
   int field_width = 20;
   int float_precision = 2;
 
   if (_print_header) {
-    printf("%-*s%*s%*s%*s",
-           10, "# Size (B)",
+    printf("%-*s%-*s%*s%*s%*s",
+           15, "# Size (B)",
+           15, "# of timed Msgs",
            field_width, "Latency (us)",
            field_width, "Bandwidth (GB/s)",
            field_width + 1, "Msg Rate (Msg/s)\n");
+
     _print_header = 0;
   }
 
-  printf("%-*lu%*.*f%*.*f%*.*f\n",
-         10, size,
-         field_width, float_precision, latency_avg,
-         field_width, float_precision, bandwidth_avg_gbs,
-         field_width, float_precision, avg_msg_rate);
+  printf("%-*lu%-*d%*.*f%*.*f%*.*f\n",
+       15, size,
+       15, num_timed_msgs,
+       field_width, float_precision, latency_avg,
+       field_width, float_precision, bandwidth_avg_gbs,
+       field_width, float_precision, avg_msg_rate);
 
   fflush(stdout);
 }
@@ -628,33 +557,25 @@ void Tester::barrier() {
   flush_hdp();
 }
 
-uint64_t Tester::gpuCyclesToMicroseconds(uint64_t cycles) {
-  /**
-   * The dGPU asm core timer runs at 27MHz. This is different from the
-   * core clock returned by HIP. For an APU, this is different and might
-   * need adjusting.
-   */
-  uint64_t gpu_frequency_MHz = 27;
-
-  /**
-   * hipDeviceGetAttribute(&gpu_frequency_khz,
-   *                       hipDeviceAttributeClockRate,
-   *                       0);
-   */
-
-  return cycles / gpu_frequency_MHz;
+double Tester::gpuCyclesToMicroseconds(uint64_t cycles) {
+  return static_cast<double>(cycles) / (wall_clk_rate * 1e-3);
 }
 
-uint64_t Tester::timerAvgInMicroseconds() {
-  uint64_t sum = 0;
+double Tester::timerAvgInMicroseconds() {
+  double sum = 0;
+  min_start_time = 0xFFFFFFFFFFFFFFFF;
+  max_end_time = 0;
 
-  /**
-   * TODO: (bpotter/avinash) Modify the calcuation for the Tiled version of
-   *       puts and gets at wavefront level
-  */
-  for (uint64_t i = 0; i < args.num_wgs; i++) {
+  for (uint64_t i = 0; i < num_timers; i++) {
+    timer[i] = end_time[i] - start_time[i];
     sum += gpuCyclesToMicroseconds(timer[i]);
+    min_start_time = (start_time[i] < min_start_time)
+                     ? start_time[i]
+                     : min_start_time;
+    max_end_time = (end_time[i] > max_end_time)
+                     ? end_time[i]
+                     : max_end_time;
   }
 
-  return sum / args.num_wgs;
+  return sum / num_timers;
 }

@@ -28,6 +28,8 @@
 
 #include "tester.hpp"
 
+using namespace rocshmem;
+
 /******************************************************************************
  * HOST TESTER CLASS
  *****************************************************************************/
@@ -60,6 +62,13 @@ class TeamReductionTester : public Tester {
   std::function<void(T1 &, T1 &)> init_buf;
   std::function<std::pair<bool, std::string>(const T1 &, const T1 &)>
       verify_buf;
+
+  /**
+   * This constant should equal ROCSHMEM_MAX_NUM_TEAMS - 1.
+   * The default value for the maximum number of teams is 40.
+   */
+  int num_teams = 39;
+  rocshmem_team_t *team_reduce_world_dup;
 };
 
 #include "team_reduction_tester.cpp"

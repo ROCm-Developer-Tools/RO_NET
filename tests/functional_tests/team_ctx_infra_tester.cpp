@@ -91,16 +91,27 @@ __global__ void TeamCtxInfraTest(ShmemContextType ctx_type,
 /******************************************************************************
  * HOST TESTER CLASS METHODS
  *****************************************************************************/
-TeamCtxInfraTester::TeamCtxInfraTester(TesterArguments args) : Tester(args) {}
+TeamCtxInfraTester::TeamCtxInfraTester(TesterArguments args) : Tester(args) {
 
-TeamCtxInfraTester::~TeamCtxInfraTester() {}
+  char* value{nullptr};
+  if ((value = getenv("ROCSHMEM_MAX_NUM_TEAMS"))) {
+    num_teams = atoi(value);
+  }
+
+  CHECK_HIP(hipMalloc(&team_world_dup,
+                      sizeof(rocshmem_team_t) * num_teams));
+}
+
+TeamCtxInfraTester::~TeamCtxInfraTester() {
+  CHECK_HIP(hipFree(team_world_dup));
+}
 
 void TeamCtxInfraTester::resetBuffers(uint64_t size) {}
 
 void TeamCtxInfraTester::preLaunchKernel() {
   int n_pes = rocshmem_team_n_pes(ROCSHMEM_TEAM_WORLD);
 
-  for (int team_i = 0; team_i < NUM_TEAMS; team_i++) {
+  for (int team_i = 0; team_i < num_teams; team_i++) {
     team_world_dup[team_i] = ROCSHMEM_TEAM_INVALID;
     rocshmem_team_split_strided(ROCSHMEM_TEAM_WORLD, 0, 1, n_pes, nullptr, 0,
                                  &team_world_dup[team_i]);
@@ -124,20 +135,12 @@ void TeamCtxInfraTester::launchKernel(dim3 gridSize, dim3 blockSize, int loop,
                                       uint64_t size) {
   size_t shared_bytes = 0;
 
-  /* Copy array of teams to device */
-  rocshmem_team_t *teams_on_device;
-  CHECK_HIP(hipMalloc(&teams_on_device, sizeof(rocshmem_team_t) * NUM_TEAMS));
-  CHECK_HIP(hipMemcpy(teams_on_device, team_world_dup,
-            sizeof(rocshmem_team_t) * NUM_TEAMS, hipMemcpyHostToDevice));
-
   hipLaunchKernelGGL(TeamCtxInfraTest, gridSize, blockSize, shared_bytes,
-		     stream, _shmem_context, teams_on_device);
-
-  CHECK_HIP(hipFree(teams_on_device));
+		     stream, _shmem_context, team_world_dup);
 }
 
 void TeamCtxInfraTester::postLaunchKernel() {
-  for (int team_i = 0; team_i < NUM_TEAMS; team_i++) {
+  for (int team_i = 0; team_i < num_teams; team_i++) {
     rocshmem_team_destroy(team_world_dup[team_i]);
   }
 }

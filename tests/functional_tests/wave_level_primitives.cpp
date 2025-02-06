@@ -31,7 +31,8 @@ using namespace rocshmem;
 /******************************************************************************
  * DEVICE TEST KERNEL
  *****************************************************************************/
-__global__ void WaveLevelPrimitiveTest(int loop, int skip, uint64_t *timer,
+__global__ void WaveLevelPrimitiveTest(int loop, int skip,
+                                      uint64_t *start_time, uint64_t *end_time,
                                       char *s_buf, char *r_buf, int size,
                                       TestType type, ShmemContextType ctx_type,
                                       int wf_size) {
@@ -39,20 +40,17 @@ __global__ void WaveLevelPrimitiveTest(int loop, int skip, uint64_t *timer,
   rocshmem_wg_init();
   rocshmem_wg_ctx_create(ctx_type, &ctx);
 
-  /**
-   * Calculate start index for each wavefront for tiled version
-   * If the number of wavefronts is greater than 1, this kernel performs a
-   * tiled functional test
-  */
-  uint64_t start;
+  // Calculate start index for each wavefront
   int wf_id = get_flat_block_id() / wf_size;
-  int wg_offset = size * get_flat_grid_id() * (get_flat_block_size() / wf_size);
-  int idx = wf_id * size + wg_offset;
-  s_buf += idx;
-  r_buf += idx;
+  int wg_offset = get_flat_grid_id() *
+                  ((get_flat_block_size() - 1 ) / wf_size + 1);
+  int idx = wf_id + wg_offset;
+  int offset = size * idx;
+  s_buf += offset;
+  r_buf += offset;
 
   for (int i = 0; i < loop + skip; i++) {
-    if (i == skip) start = rocshmem_timer();
+    if (i == skip) start_time[idx] = wall_clock64();
 
     switch (type) {
       case WAVEGetTestType:
@@ -74,9 +72,7 @@ __global__ void WaveLevelPrimitiveTest(int loop, int skip, uint64_t *timer,
 
   rocshmem_ctx_quiet(ctx);
 
-  if (hipThreadIdx_x == 0) {
-    timer[hipBlockIdx_x] = rocshmem_timer() - start;
-  }
+  end_time[idx] = wall_clock64();
 
   rocshmem_wg_ctx_destroy(&ctx);
   rocshmem_wg_finalize();
@@ -109,8 +105,8 @@ void WaveLevelPrimitiveTester::launchKernel(dim3 gridSize, dim3 blockSize,
   size_t shared_bytes = 0;
 
   hipLaunchKernelGGL(WaveLevelPrimitiveTest, gridSize, blockSize, shared_bytes,
-                     stream, loop, args.skip, timer, (char*)s_buf,
-                     (char*)r_buf, size, _type, _shmem_context,
+                     stream, loop, args.skip, start_time, end_time,
+                     (char*)s_buf, (char*)r_buf, size, _type, _shmem_context,
                      deviceProps.warpSize);
 
   num_msgs = (loop + args.skip) * gridSize.x * num_warps;
