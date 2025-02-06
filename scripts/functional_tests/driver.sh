@@ -270,15 +270,18 @@ TestSigOps() {
   ExecTest  "putsignal"        2       2            32        1048576
   ExecTest  "wgputsignal"      2       2            32        1048576
   ExecTest  "waveputsignal"    2       1            32        1048576
+  ExecTest  "waveputsignal"    2       2            64        1048576
 
   ExecTest  "putsignalnbi"     2       1            1         1048576
   ExecTest  "putsignalnbi"     2       2            32        1048576
   ExecTest  "wgputsignalnbi"   2       2            32        1048576
   ExecTest  "waveputsignalnbi" 2       1            32        1048576
+  ExecTest  "waveputsignalnbi" 2       2            64        1048576
 
   ExecTest  "signalfetch"      2       1            1
   ExecTest  "wgsignalfetch"    2       2            32
   ExecTest  "wavesignalfetch"  2       1            32
+  ExecTest  "wavesignalfetch"  2       1            64
 }
 
 TestColl() {

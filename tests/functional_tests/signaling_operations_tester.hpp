@@ -31,6 +31,7 @@
 class SignalingOperationsTester : public Tester {
  public:
   explicit SignalingOperationsTester(TesterArguments args);
+  explicit SignalingOperationsTester(TesterArguments args, int signal_op);
   virtual ~SignalingOperationsTester();
 
  protected:
@@ -41,6 +42,7 @@ class SignalingOperationsTester : public Tester {
 
   virtual void verifyResults(uint64_t size) override;
 
+  int sig_op;
   char *s_buf = nullptr;
   char *r_buf = nullptr;
   uint64_t *sig_addr;

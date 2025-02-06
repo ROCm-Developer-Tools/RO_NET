@@ -422,27 +422,33 @@ std::vector<Tester*> Tester::create(TesterArguments args) {
       return testers;
     case PutSignalTestType:
       if (rank == 0) std::cout << "Putmem Signal ###" << std::endl;
-      testers.push_back(new SignalingOperationsTester(args));
+      testers.push_back(new SignalingOperationsTester(args, ROCSHMEM_SIGNAL_SET));
+      testers.push_back(new SignalingOperationsTester(args, ROCSHMEM_SIGNAL_ADD));
       return testers;
     case WGPutSignalTestType:
       if (rank == 0) std::cout << "WG Putmem Signal ###" << std::endl;
-      testers.push_back(new SignalingOperationsTester(args));
+      testers.push_back(new SignalingOperationsTester(args, ROCSHMEM_SIGNAL_SET));
+      testers.push_back(new SignalingOperationsTester(args, ROCSHMEM_SIGNAL_ADD));
       return testers;
     case WAVEPutSignalTestType:
       if (rank == 0) std::cout << "Wave Putmem Signal ###" << std::endl;
-      testers.push_back(new SignalingOperationsTester(args));
+      testers.push_back(new SignalingOperationsTester(args, ROCSHMEM_SIGNAL_SET));
+      testers.push_back(new SignalingOperationsTester(args, ROCSHMEM_SIGNAL_ADD));
       return testers;
     case PutSignalNBITestType:
       if (rank == 0) std::cout << "Non-Blocking Putmem Signal ###" << std::endl;
-      testers.push_back(new SignalingOperationsTester(args));
+      testers.push_back(new SignalingOperationsTester(args, ROCSHMEM_SIGNAL_SET));
+      testers.push_back(new SignalingOperationsTester(args, ROCSHMEM_SIGNAL_ADD));
       return testers;
     case WGPutSignalNBITestType:
       if (rank == 0) std::cout << "Non-Blocking WG Putmem Signal ###" << std::endl;
-      testers.push_back(new SignalingOperationsTester(args));
+      testers.push_back(new SignalingOperationsTester(args, ROCSHMEM_SIGNAL_SET));
+      testers.push_back(new SignalingOperationsTester(args, ROCSHMEM_SIGNAL_ADD));
       return testers;
     case WAVEPutSignalNBITestType:
       if (rank == 0) std::cout << "Non-Blocking Wave Putmem Signal ###" << std::endl;
-      testers.push_back(new SignalingOperationsTester(args));
+      testers.push_back(new SignalingOperationsTester(args, ROCSHMEM_SIGNAL_SET));
+      testers.push_back(new SignalingOperationsTester(args, ROCSHMEM_SIGNAL_ADD));
       return testers;
     case SignalFetchTestType:
       if (rank == 0) std::cout << "Signal Fetch ###" << std::endl;
