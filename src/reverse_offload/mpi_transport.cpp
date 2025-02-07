@@ -159,14 +159,14 @@ void MPITransport::submitRequestsToMPI() {
               next_element.PE,
               reinterpret_cast<int64_t>(next_element.ol2.pWrk));
       break;
-    case RO_NET_TEAM_TO_ALL:
+    case RO_NET_TEAM_REDUCE:
       team_reduction(next_element.dst, next_element.src, next_element.ol1.size,
                      next_element.ro_net_win_id, queue_idx,
                      next_element.team_comm,
                      static_cast<ROCSHMEM_OP>(next_element.op),
                      static_cast<ro_net_types>(next_element.datatype),
                      next_element.threadId, true);
-      DPRINTF("Received FLOAT_SUM_TEAM_TO_ALL dst %p src %p size %lu team %d\n",
+      DPRINTF("Received FLOAT_SUM_TEAM_REDUCE dst %p src %p size %lu team %d\n",
               next_element.dst, next_element.src, next_element.ol1.size,
               next_element.team_comm);
       break;

@@ -507,7 +507,7 @@ __device__ void build_queue_element(
     queue_element->op = op;
     queue_element->datatype = datatype;
   }
-  if (type == RO_NET_TEAM_TO_ALL) {
+  if (type == RO_NET_TEAM_REDUCE) {
     queue_element->op = op;
     queue_element->datatype = datatype;
     queue_element->team_comm = team_comm;

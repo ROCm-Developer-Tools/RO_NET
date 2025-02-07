@@ -81,7 +81,7 @@ __device__ void Context::to_all(T *dest, const T *source, int nreduce,
 
 template <typename T, ROCSHMEM_OP Op>
 __device__ int Context::reduce(rocshmem_team_t team, T *dest, const T *source,
-                                int nreduce) {
+                               int nreduce) {
   if (nreduce == 0) {
     return ROCSHMEM_SUCCESS;
   }

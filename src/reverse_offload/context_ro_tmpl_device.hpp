@@ -109,20 +109,21 @@ struct GetROType<long double> {
  *****************************************************************************/
 
 template <typename T, ROCSHMEM_OP Op>
-__device__ void ROContext::to_all(rocshmem_team_t team, T *dest,
-                                  const T *source, int nreduce) {
+__device__ int ROContext::reduce(rocshmem_team_t team, T *dest,
+                                 const T *source, int nreduce) {
   if (!is_thread_zero_in_block()) {
     __syncthreads();
-    return;
+    return ROCSHMEM_SUCCESS;
   }
 
   ROTeam *team_obj{reinterpret_cast<ROTeam *>(team)};
 
-  build_queue_element(RO_NET_TEAM_TO_ALL, dest, const_cast<T *>(source),
+  build_queue_element(RO_NET_TEAM_REDUCE, dest, const_cast<T *>(source),
                       nreduce, 0, 0, 0, 0, nullptr, nullptr, team_obj->mpi_comm,
                       ro_net_win_id, block_handle, true, Op, GetROType<T>::Type);
 
   __syncthreads();
+  return ROCSHMEM_SUCCESS;
 }
 
 template <typename T, ROCSHMEM_OP Op>
